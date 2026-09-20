@@ -90,6 +90,12 @@ jobs:
         with:
           xcode-version: '26.2'
 
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source "$HOME/.cargo/env"
+          rustc --version
+
       - name: Build SideStore
         run: |
           xcodebuild archive \
