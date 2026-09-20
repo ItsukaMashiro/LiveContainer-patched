@@ -1,8 +1,6 @@
 name: Build Patched LiveContainer+SideStore
 
-"on":
-  push:
-    branches: [master]
+on:
   workflow_dispatch:
 
 jobs:
@@ -38,57 +36,98 @@ jobs:
           #       continue
           #   }
           #   #endif
-          sed -i '' '/#if DEBUG/,/#endif/d' AltStore/Operations/ResignAppOperation.swift
+          python3 << 'EOF'
+import re
+
+with open("AltStore/Operations/ResignAppOperation.swift", "r") as f:
+    content = f.read()
+
+# Remove the #if DEBUG xctest removal block
+pattern = r'\n        #if DEBUG\n        guard !fileURL\.lastPathComponent\.lowercased\(\)\.contains\("\.xctest"\) else \{\n            try FileManager\.default\.removeItem\(at: fileURL\)\n            continue\n        \}\n        #endif'
+new_content, count = re.subn(pattern, '', content)
+
+if count == 0:
+    print("WARNING: pattern not found, trying alternative...")
+    # Alternative: remove lines containing the xctest guard
+    lines = content.split('\n')
+    new_lines = []
+    in_debug_block = False
+    for line in lines:
+        if '#if DEBUG' in line and not in_debug_block:
+            in_debug_block = True
+            continue
+        if in_debug_block and '#endif' in line:
+            in_debug_block = False
+            continue
+        if in_debug_block:
+            continue
+        new_lines.append(line)
+    new_content = '\n'.join(new_lines)
+    print(f"Removed {len(lines) - len(new_lines)} lines")
+else:
+    print(f"Removed xctest-strip block (pattern matched {count} time(s))")
+
+with open("AltStore/Operations/ResignAppOperation.swift", "w") as f:
+    f.write(new_content)
+EOF
 
           echo "=== After patch ==="
           grep -n "xctest" "$FILE" || echo "(no xctest matches - patch applied successfully)"
 
-      - name: Pin em_proxy prebuilt files
+      - name: Apply SideSign xctest loadExtensions patch
         run: |
-          # The em_proxy "Fetch prebuilt binaries" phase downloads from releases/latest
-          # (v0.9.3), which only ships EMProxy.xcframework.zip — NO em_proxy.h/.swift/.a.
-          # The 404 leaves the em_proxy module without start_em_proxy/stop_em_proxy,
-          # so EMProxyWrapper.swift fails to compile.
-          # Pin to the 'build' release, which ships all four files.
-          cd Dependencies/em_proxy
-          curl -sL -o em_proxy.h         "https://github.com/SideStore/em_proxy/releases/download/build/em_proxy.h"
-          curl -sL -o em_proxy.swift    "https://github.com/SideStore/em_proxy/releases/download/build/em_proxy.swift"
-          curl -sL -o libem_proxy-ios.a "https://github.com/SideStore/em_proxy/releases/download/build/libem_proxy-ios.a"
-          curl -sL -o libem_proxy-sim.a "https://github.com/SideStore/em_proxy/releases/download/build/libem_proxy-sim.a"
-          # Make the fetch phase use these local files instead of re-fetching the broken latest.
-          touch .skip-prebuilt-fetch-em_proxy
-          echo "=== em_proxy.h (C ABI) ==="
-          grep -E "start_|stop_" em_proxy.h || true
-          echo "=== em_proxy.swift (Swift API) ==="
-          grep -E "start_|stop_" em_proxy.swift || true
+          SS_FILE="Dependencies/SideSign/Sources/Models/AppBundle.swift"
+          echo "=== SideSign Before patch ==="
+          grep -n "appex" "$SS_FILE" || echo "(no appex matches found)"
+
+          python3 << 'EOF'
+with open("Dependencies/SideSign/Sources/Models/AppBundle.swift", "r") as f:
+    content = f.read()
+
+# Patch loadExtensions: add xctest to the filter
+old_filter = '.filter { $0.pathExtension.lowercased() == "appex" }'
+new_filter = '.filter { ["appex", "xctest"].contains($0.pathExtension.lowercased()) }'
+content = content.replace(old_filter, new_filter)
+
+# Patch isExtension: add xctest
+old_ext = 'fileURL.pathExtension.lowercased() == "appex"'
+new_ext = '["appex", "xctest"].contains(fileURL.pathExtension.lowercased())'
+content = content.replace(old_ext, new_ext)
+
+with open("Dependencies/SideSign/Sources/Models/AppBundle.swift", "w") as f:
+    f.write(content)
+
+print("SideSign AppBundle.swift patched")
+EOF
+
+          echo "=== SideSign After patch ==="
+          grep -n "xctest" "$SS_FILE" || echo "(no xctest matches - patch may have failed)"
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.4'
+          xcode-version: '26.2'
 
       - name: Build SideStore
         run: |
           xcodebuild archive \
-            -project AltStore.xcodeproj \
-            -scheme SideStore \
+            -scheme "$SCHEME" \
+            -workspace SideStore.xcworkspace \
             -sdk iphoneos \
+            -arch arm64 \
             -configuration Release \
-            -archivePath ./SideStore \
-            CODE_SIGNING_REQUIRED=NO \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM=XYZ0123456 \
-            ORG_IDENTIFIER=com.SideStore
+            -archivePath "$ARCHIVE_PATH" \
+            | xcpretty
           exit ${PIPESTATUS[0]}
 
       - name: Create SideStore IPA
         run: |
-          mkdir -p Payload/SideStore.app
-          cp -R SideStore.xcarchive/Products/Applications/SideStore.app/ Payload/SideStore.app/
-          rm -f SideStore-patched.ipa
-          zip -r SideStore-patched.ipa Payload
-          rm -rf Payload*/
+          # Extract the app from the archive
+          mkdir -p sidestore-ipa/Payload
+          cp -r "$ARCHIVE_PATH.xcarchive/Products/Applications/SideStore.app" sidestore-ipa/Payload/
+          cd sidestore-ipa
+          zip -r ../SideStore-patched.ipa Payload
+          cd ..
           ls -la SideStore-patched.ipa
 
       - name: Upload SideStore IPA
