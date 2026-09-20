@@ -68,19 +68,21 @@ jobs:
           echo "=== xctest-strip: After ==="
           grep -n "xctest" AltStore/Operations/ResignAppOperation.swift || echo "(no xctest matches - removed)"
           echo ""
-          echo "=== Searching for AppBundle.swift ==="
-          find . -name "AppBundle.swift" 2>/dev/null | head -10
-          SS_FILE=$(find . -name "AppBundle.swift" 2>/dev/null | head -1)
-          echo "Found AppBundle.swift at: $SS_FILE"
+          echo "=== Searching for ALTApplication.swift ==="
+          SS_FILE="Dependencies/AltSign/Sources/Model/ALTApplication.swift"
+          if [ ! -f "$SS_FILE" ]; then
+            SS_FILE=$(find . -name "ALTApplication.swift" 2>/dev/null | head -1)
+          fi
+          echo "Found ALTApplication.swift at: $SS_FILE"
           if [ -z "$SS_FILE" ]; then
-            echo "ERROR: AppBundle.swift not found anywhere"
+            echo "ERROR: ALTApplication.swift not found"
+            find . -name "*.swift" -path "*/AltSign/*" 2>/dev/null | head -10
             exit 1
           fi
-          echo "=== SideSign: Before ==="
+          echo "=== AltSign: Before ==="
           grep -n "appex" "$SS_FILE" || echo "(no appex matches)"
-          sed -i.bak 's|\.filter { \$0\.pathExtension\.lowercased() == "appex" }|.filter { ["appex", "xctest"].contains($0.pathExtension.lowercased()) }|' "$SS_FILE"
-          sed -i.bak 's|fileURL\.pathExtension\.lowercased() == "appex"|["appex", "xctest"].contains(fileURL.pathExtension.lowercased())|' "$SS_FILE"
-          echo "=== SideSign: After ==="
+          sed -i.bak 's|pathExtension\.lowercased() == "appex"|["appex", "xctest"].contains(pathExtension.lowercased())|g' "$SS_FILE"
+          echo "=== AltSign: After ==="
           grep -n "xctest" "$SS_FILE" || echo "(no xctest matches - patch may have failed)"
 
       - name: Setup Xcode
