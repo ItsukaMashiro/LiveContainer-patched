@@ -103,8 +103,13 @@ jobs:
           cd Dependencies/em_proxy
           curl -L -o EMProxy.xcframework.zip https://github.com/SideStore/em_proxy/releases/download/v0.9.3/EMProxy.xcframework.zip
           unzip -q EMProxy.xcframework.zip
+          cp EMProxy.xcframework/ios-arm64/libem_proxy.a libem_proxy-ios.a
+          cp EMProxy.xcframework/ios-arm64/libem_proxy.a libem_proxy-sim.a
           cp EMProxy.xcframework/ios-arm64/libem_proxy.a libem_proxy_static.a
-          ls -la libem_proxy_static.a
+          cp EMProxy.xcframework/ios-arm64/em_proxy.h em_proxy.h 2>/dev/null || true
+          cp EMProxy.xcframework/ios-arm64/em_proxy.swift em_proxy.swift 2>/dev/null || true
+          touch .skip-prebuilt-fetch-em_proxy
+          ls -la libem_proxy_static.a libem_proxy-ios.a libem_proxy-sim.a
 
       - name: Build SideStore
         run: |
