@@ -43,6 +43,25 @@ jobs:
           echo "=== After patch ==="
           grep -n "xctest" "$FILE" || echo "(no xctest matches - patch applied successfully)"
 
+      - name: Pin em_proxy prebuilt files
+        run: |
+          # The em_proxy "Fetch prebuilt binaries" phase downloads from releases/latest
+          # (v0.9.3), which only ships EMProxy.xcframework.zip — NO em_proxy.h/.swift/.a.
+          # The 404 leaves the em_proxy module without start_em_proxy/stop_em_proxy,
+          # so EMProxyWrapper.swift fails to compile.
+          # Pin to the 'build' release, which ships all four files.
+          cd Dependencies/em_proxy
+          curl -sL -o em_proxy.h         "https://github.com/SideStore/em_proxy/releases/download/build/em_proxy.h"
+          curl -sL -o em_proxy.swift    "https://github.com/SideStore/em_proxy/releases/download/build/em_proxy.swift"
+          curl -sL -o libem_proxy-ios.a "https://github.com/SideStore/em_proxy/releases/download/build/libem_proxy-ios.a"
+          curl -sL -o libem_proxy-sim.a "https://github.com/SideStore/em_proxy/releases/download/build/libem_proxy-sim.a"
+          # Make the fetch phase use these local files instead of re-fetching the broken latest.
+          touch .skip-prebuilt-fetch-em_proxy
+          echo "=== em_proxy.h (C ABI) ==="
+          grep -E "start_|stop_" em_proxy.h || true
+          echo "=== em_proxy.swift (Swift API) ==="
+          grep -E "start_|stop_" em_proxy.swift || true
+
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
