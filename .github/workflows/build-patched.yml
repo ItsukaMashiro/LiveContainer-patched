@@ -1,7 +1,6 @@
 name: Build Patched LiveContainer+SideStore
 
-'on':
-  workflow_dispatch:
+on: [workflow_dispatch]
 
 jobs:
   build-sidestore:
@@ -255,6 +254,8 @@ EOF
         with:
           name: LiveContainer+SideStore-patched.ipa
           path: LiveContainer+SideStore-patched.ipa
- 
+
  
+ 
+
 
