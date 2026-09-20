@@ -106,8 +106,8 @@ jobs:
           cp EMProxy.xcframework/ios-arm64/libem_proxy.a libem_proxy-ios.a
           cp EMProxy.xcframework/ios-arm64/libem_proxy.a libem_proxy-sim.a
           cp EMProxy.xcframework/ios-arm64/libem_proxy.a libem_proxy_static.a
-          cp EMProxy.xcframework/ios-arm64/em_proxy.h em_proxy.h 2>/dev/null || true
-          cp EMProxy.xcframework/ios-arm64/em_proxy.swift em_proxy.swift 2>/dev/null || true
+          cp EMProxy.xcframework/ios-arm64/Headers/EMProxy/em_proxy.h em_proxy.h
+          cp EMProxy.xcframework/ios-arm64/Headers/EMProxy/module.modulemap module.modulemap 2>/dev/null || true
           touch .skip-prebuilt-fetch-em_proxy
           ls -la libem_proxy_static.a libem_proxy-ios.a libem_proxy-sim.a
 
