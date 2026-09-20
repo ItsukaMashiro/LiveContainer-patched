@@ -96,9 +96,17 @@ jobs:
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           rustc --version
 
-      - name: Build SideStore
+      - name: Build Rust bridge
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
+          cd Dependencies/em_proxy
+          BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$(xcrun --sdk iphoneos --show-sdk-path)" \
+          IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+          cargo build --release --target aarch64-apple-ios
+          cp target/aarch64-apple-ios/release/libem_proxy.a ../libem_proxy_static.a
+
+      - name: Build SideStore
+        run: |
           xcodebuild archive \
             -scheme "$SCHEME" \
             -project AltStore.xcodeproj \
