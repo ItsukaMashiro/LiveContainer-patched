@@ -68,11 +68,22 @@ jobs:
           echo "=== xctest-strip: After ==="
           grep -n "xctest" AltStore/Operations/ResignAppOperation.swift || echo "(no xctest matches - removed)"
           echo ""
+          echo "=== SideSign directory structure ==="
+          find Dependencies/SideSign -name "AppBundle.swift" 2>/dev/null || echo "SideSign dir not found"
+          ls -la Dependencies/ 2>/dev/null || echo "Dependencies dir not found"
+          find . -name "AppBundle.swift" -maxdepth 5 2>/dev/null | head -5
+          SS_FILE=$(find . -name "AppBundle.swift" -path "*/SideSign/*" 2>/dev/null | head -1)
+          echo "Found SideSign AppBundle.swift at: $SS_FILE"
+          if [ -z "$SS_FILE" ]; then
+            echo "ERROR: SideSign AppBundle.swift not found"
+            exit 1
+          fi
           echo "=== SideSign: Before ==="
-          grep -n "appex" Dependencies/SideSign/Sources/Models/AppBundle.swift || echo "(no appex matches)"
-          python3 /tmp/patch_sidesign.py
+          grep -n "appex" "$SS_FILE" || echo "(no appex matches)"
+          sed -i.bak 's|\.filter { \$0\.pathExtension\.lowercased() == "appex" }|.filter { ["appex", "xctest"].contains($0.pathExtension.lowercased()) }|' "$SS_FILE"
+          sed -i.bak 's|fileURL\.pathExtension\.lowercased() == "appex"|["appex", "xctest"].contains(fileURL.pathExtension.lowercased())|' "$SS_FILE"
           echo "=== SideSign: After ==="
-          grep -n "xctest" Dependencies/SideSign/Sources/Models/AppBundle.swift || echo "(no xctest matches - patch may have failed)"
+          grep -n "xctest" "$SS_FILE" || echo "(no xctest matches - patch may have failed)"
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
