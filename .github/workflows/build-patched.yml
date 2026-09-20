@@ -101,8 +101,9 @@ jobs:
       - name: Fetch prebuilt Rust bridge
         run: |
           cd Dependencies/em_proxy
-          bash fetch-prebuilt.sh em_proxy
-          cp libem_proxy-ios.a libem_proxy_static.a
+          curl -L -o EMProxy.xcframework.zip https://github.com/SideStore/em_proxy/releases/download/v0.9.3/EMProxy.xcframework.zip
+          unzip -q EMProxy.xcframework.zip
+          cp EMProxy.xcframework/ios-arm64/libem_proxy.a libem_proxy_static.a
           ls -la libem_proxy_static.a
 
       - name: Build SideStore
