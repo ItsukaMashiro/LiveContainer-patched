@@ -38,19 +38,17 @@ jobs:
           #       continue
           #   }
           #   #endif
-          python3 << 'EOF'
+          cat > /tmp/patch.py << 'PYEOF'
 import re
 
 with open("AltStore/Operations/ResignAppOperation.swift", "r") as f:
     content = f.read()
 
-# Remove the #if DEBUG xctest removal block
 pattern = r'\n        #if DEBUG\n        guard !fileURL\.lastPathComponent\.lowercased\(\)\.contains\("\.xctest"\) else \{\n            try FileManager\.default\.removeItem\(at: fileURL\)\n            continue\n        \}\n        #endif'
 new_content, count = re.subn(pattern, '', content)
 
 if count == 0:
     print("WARNING: pattern not found, trying alternative...")
-    # Alternative: remove lines containing the xctest guard
     lines = content.split('\n')
     new_lines = []
     in_debug_block = False
@@ -71,7 +69,8 @@ else:
 
 with open("AltStore/Operations/ResignAppOperation.swift", "w") as f:
     f.write(new_content)
-EOF
+PYEOF
+          python3 /tmp/patch.py
 
           echo "=== After patch ==="
           grep -n "xctest" "$FILE" || echo "(no xctest matches - patch applied successfully)"
