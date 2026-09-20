@@ -94,7 +94,7 @@ jobs:
         run: |
           xcodebuild archive \
             -scheme "$SCHEME" \
-            -workspace SideStore.xcworkspace \
+            -project AltStore.xcodeproj \
             -sdk iphoneos \
             -arch arm64 \
             -configuration Release \
