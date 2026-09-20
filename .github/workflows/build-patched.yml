@@ -38,39 +38,7 @@ jobs:
           #       continue
           #   }
           #   #endif
-          cat > /tmp/patch.py << 'PYEOF'
-import re
-
-with open("AltStore/Operations/ResignAppOperation.swift", "r") as f:
-    content = f.read()
-
-pattern = r'\n        #if DEBUG\n        guard !fileURL\.lastPathComponent\.lowercased\(\)\.contains\("\.xctest"\) else \{\n            try FileManager\.default\.removeItem\(at: fileURL\)\n            continue\n        \}\n        #endif'
-new_content, count = re.subn(pattern, '', content)
-
-if count == 0:
-    print("WARNING: pattern not found, trying alternative...")
-    lines = content.split('\n')
-    new_lines = []
-    in_debug_block = False
-    for line in lines:
-        if '#if DEBUG' in line and not in_debug_block:
-            in_debug_block = True
-            continue
-        if in_debug_block and '#endif' in line:
-            in_debug_block = False
-            continue
-        if in_debug_block:
-            continue
-        new_lines.append(line)
-    new_content = '\n'.join(new_lines)
-    print(f"Removed {len(lines) - len(new_lines)} lines")
-else:
-    print(f"Removed xctest-strip block (pattern matched {count} time(s))")
-
-with open("AltStore/Operations/ResignAppOperation.swift", "w") as f:
-    f.write(new_content)
-PYEOF
-          python3 /tmp/patch.py
+          sed -i '' '/#if DEBUG/,/#endif/d' AltStore/Operations/ResignAppOperation.swift
 
           echo "=== After patch ==="
           grep -n "xctest" "$FILE" || echo "(no xctest matches - patch applied successfully)"
