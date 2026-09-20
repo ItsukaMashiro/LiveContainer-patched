@@ -81,7 +81,15 @@ jobs:
           fi
           echo "=== AltSign: Before ==="
           grep -n "appex" "$SS_FILE" || echo "(no appex matches)"
-          sed -i.bak 's|pathExtension\.lowercased() == "appex"|["appex", "xctest"].contains(pathExtension.lowercased())|g' "$SS_FILE"
+          python3 -c "
+          import re
+          with open('$SS_FILE', 'r') as f:
+              content = f.read()
+          content = re.sub(r'(\w+)\.pathExtension\.lowercased\(\) == \"appex\"', r'[\"appex\", \"xctest\"].contains(\1.pathExtension.lowercased())', content)
+          with open('$SS_FILE', 'w') as f:
+              f.write(content)
+          print('AltSign patch applied')
+          "
           echo "=== AltSign: After ==="
           grep -n "xctest" "$SS_FILE" || echo "(no xctest matches - patch may have failed)"
 
