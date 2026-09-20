@@ -68,14 +68,12 @@ jobs:
           echo "=== xctest-strip: After ==="
           grep -n "xctest" AltStore/Operations/ResignAppOperation.swift || echo "(no xctest matches - removed)"
           echo ""
-          echo "=== SideSign directory structure ==="
-          find Dependencies/SideSign -name "AppBundle.swift" 2>/dev/null || echo "SideSign dir not found"
-          ls -la Dependencies/ 2>/dev/null || echo "Dependencies dir not found"
-          find . -name "AppBundle.swift" -maxdepth 5 2>/dev/null | head -5
-          SS_FILE=$(find . -name "AppBundle.swift" -path "*/SideSign/*" 2>/dev/null | head -1)
-          echo "Found SideSign AppBundle.swift at: $SS_FILE"
+          echo "=== Searching for AppBundle.swift ==="
+          find . -name "AppBundle.swift" 2>/dev/null | head -10
+          SS_FILE=$(find . -name "AppBundle.swift" 2>/dev/null | head -1)
+          echo "Found AppBundle.swift at: $SS_FILE"
           if [ -z "$SS_FILE" ]; then
-            echo "ERROR: SideSign AppBundle.swift not found"
+            echo "ERROR: AppBundle.swift not found anywhere"
             exit 1
           fi
           echo "=== SideSign: Before ==="
