@@ -1,6 +1,7 @@
 name: Build Patched LiveContainer+SideStore
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
 
 jobs:
   build-sidestore:
@@ -9,8 +10,6 @@ jobs:
     env:
       SCHEME: SideStore
       ARCHIVE_PATH: sidestore-archive
-    outputs:
-      sidestore_ipa: ${{ env.ARCHIVE_PATH }}/SideStore.ipa
     steps:
       - name: Checkout SideStore (LiveContainer fork)
         uses: actions/checkout@v4
@@ -20,87 +19,60 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Apply xctest-strip patch
+      - name: Write patch scripts
         run: |
-          # Remove the #if DEBUG xctest removal block in ResignAppOperation.swift
-          FILE="AltStore/Operations/ResignAppOperation.swift"
-          echo "=== Before patch ==="
-          grep -n "xctest" "$FILE" || echo "(no xctest matches found)"
-          
-          # Use sed to remove the #if DEBUG block (6 lines)
-          # The block is:
-          #   #if DEBUG
-          #   guard !fileURL.lastPathComponent.lowercased().contains(".xctest") else {
-          #       try FileManager.default.removeItem(at: fileURL)
-          #       continue
-          #   }
-          #   #endif
-          python3 << 'EOF'
-import re
+          cat > /tmp/patch_xctest.py << 'PYEOF'
+          import re
+          with open("AltStore/Operations/ResignAppOperation.swift", "r") as f:
+              content = f.read()
+          pattern = r'\n        #if DEBUG\n        guard !fileURL\.lastPathComponent\.lowercased\(\)\.contains\("\.xctest"\) else \{\n            try FileManager\.default\.removeItem\(at: fileURL\)\n            continue\n        \}\n        #endif'
+          new_content, count = re.subn(pattern, '', content)
+          if count == 0:
+              lines = content.split('\n')
+              new_lines = []
+              in_debug_block = False
+              for line in lines:
+                  if '#if DEBUG' in line and not in_debug_block:
+                      in_debug_block = True
+                      continue
+                  if in_debug_block and '#endif' in line:
+                      in_debug_block = False
+                      continue
+                  if in_debug_block:
+                      continue
+                  new_lines.append(line)
+              new_content = '\n'.join(new_lines)
+          with open("AltStore/Operations/ResignAppOperation.swift", "w") as f:
+              f.write(new_content)
+          print(f"xctest-strip patch applied (matched {count} time(s))")
+          PYEOF
+          cat > /tmp/patch_sidesign.py << 'PYEOF'
+          with open("Dependencies/SideSign/Sources/Models/AppBundle.swift", "r") as f:
+              content = f.read()
+          old_filter = '.filter { $0.pathExtension.lowercased() == "appex" }'
+          new_filter = '.filter { ["appex", "xctest"].contains($0.pathExtension.lowercased()) }'
+          content = content.replace(old_filter, new_filter)
+          old_ext = 'fileURL.pathExtension.lowercased() == "appex"'
+          new_ext = '["appex", "xctest"].contains(fileURL.pathExtension.lowercased())'
+          content = content.replace(old_ext, new_ext)
+          with open("Dependencies/SideSign/Sources/Models/AppBundle.swift", "w") as f:
+              f.write(content)
+          print("SideSign AppBundle.swift patched")
+          PYEOF
 
-with open("AltStore/Operations/ResignAppOperation.swift", "r") as f:
-    content = f.read()
-
-# Remove the #if DEBUG xctest removal block
-pattern = r'\n        #if DEBUG\n        guard !fileURL\.lastPathComponent\.lowercased\(\)\.contains\("\.xctest"\) else \{\n            try FileManager\.default\.removeItem\(at: fileURL\)\n            continue\n        \}\n        #endif'
-new_content, count = re.subn(pattern, '', content)
-
-if count == 0:
-    print("WARNING: pattern not found, trying alternative...")
-    # Alternative: remove lines containing the xctest guard
-    lines = content.split('\n')
-    new_lines = []
-    in_debug_block = False
-    for line in lines:
-        if '#if DEBUG' in line and not in_debug_block:
-            in_debug_block = True
-            continue
-        if in_debug_block and '#endif' in line:
-            in_debug_block = False
-            continue
-        if in_debug_block:
-            continue
-        new_lines.append(line)
-    new_content = '\n'.join(new_lines)
-    print(f"Removed {len(lines) - len(new_lines)} lines")
-else:
-    print(f"Removed xctest-strip block (pattern matched {count} time(s))")
-
-with open("AltStore/Operations/ResignAppOperation.swift", "w") as f:
-    f.write(new_content)
-EOF
-
-          echo "=== After patch ==="
-          grep -n "xctest" "$FILE" || echo "(no xctest matches - patch applied successfully)"
-
-      - name: Apply SideSign xctest loadExtensions patch
+      - name: Apply patches
         run: |
-          SS_FILE="Dependencies/SideSign/Sources/Models/AppBundle.swift"
-          echo "=== SideSign Before patch ==="
-          grep -n "appex" "$SS_FILE" || echo "(no appex matches found)"
-
-          python3 << 'EOF'
-with open("Dependencies/SideSign/Sources/Models/AppBundle.swift", "r") as f:
-    content = f.read()
-
-# Patch loadExtensions: add xctest to the filter
-old_filter = '.filter { $0.pathExtension.lowercased() == "appex" }'
-new_filter = '.filter { ["appex", "xctest"].contains($0.pathExtension.lowercased()) }'
-content = content.replace(old_filter, new_filter)
-
-# Patch isExtension: add xctest
-old_ext = 'fileURL.pathExtension.lowercased() == "appex"'
-new_ext = '["appex", "xctest"].contains(fileURL.pathExtension.lowercased())'
-content = content.replace(old_ext, new_ext)
-
-with open("Dependencies/SideSign/Sources/Models/AppBundle.swift", "w") as f:
-    f.write(content)
-
-print("SideSign AppBundle.swift patched")
-EOF
-
-          echo "=== SideSign After patch ==="
-          grep -n "xctest" "$SS_FILE" || echo "(no xctest matches - patch may have failed)"
+          echo "=== xctest-strip: Before ==="
+          grep -n "xctest" AltStore/Operations/ResignAppOperation.swift || echo "(no xctest matches)"
+          python3 /tmp/patch_xctest.py
+          echo "=== xctest-strip: After ==="
+          grep -n "xctest" AltStore/Operations/ResignAppOperation.swift || echo "(no xctest matches - removed)"
+          echo ""
+          echo "=== SideSign: Before ==="
+          grep -n "appex" Dependencies/SideSign/Sources/Models/AppBundle.swift || echo "(no appex matches)"
+          python3 /tmp/patch_sidesign.py
+          echo "=== SideSign: After ==="
+          grep -n "xctest" Dependencies/SideSign/Sources/Models/AppBundle.swift || echo "(no xctest matches - patch may have failed)"
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -121,7 +93,6 @@ EOF
 
       - name: Create SideStore IPA
         run: |
-          # Extract the app from the archive
           mkdir -p sidestore-ipa/Payload
           cp -r "$ARCHIVE_PATH.xcarchive/Products/Applications/SideStore.app" sidestore-ipa/Payload/
           cd sidestore-ipa
@@ -171,27 +142,16 @@ EOF
             | xcpretty
           exit ${PIPESTATUS[0]}
 
-      - name: Create LiveContainer+SideStore IPA (with patched SideStore)
+      - name: Create LiveContainer+SideStore IPA
         run: |
-          # Install dependencies
           brew install ldid
           wget https://github.com/LiveContainer/dylibify/releases/download/1.0/dylibify
           chmod +x dylibify
-
-          # Move app to Payload
           mv "$ARCHIVE_PATH.xcarchive/Products/Applications" Payload
-
-          # Temporarily move SideStoreSupport framework
           mkdir tmp
           mv Payload/LiveContainer.app/Frameworks/SideStoreSupport.framework ./tmp
-
-          # Create base LiveContainer.ipa
           zip -r "$SCHEME.ipa" "Payload" -x "._*" -x ".DS_Store" -x "__MACOSX"
-
-          # Restore SideStoreSupport framework
           mv ./tmp/SideStoreSupport.framework Payload/LiveContainer.app/Frameworks
-
-          # Add SideStore keys to Info.plist
           /usr/libexec/PlistBuddy -c 'Add :ALTAppGroups array' ./Payload/LiveContainer.app/Info.plist
           /usr/libexec/PlistBuddy -c 'Add :ALTAppGroups: string group.com.SideStore.SideStore' ./Payload/LiveContainer.app/Info.plist
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:1 dict" ./Payload/LiveContainer.app/Info.plist
@@ -212,40 +172,28 @@ EOF
           /usr/libexec/PlistBuddy -c "Add :PreferenceSpecifiers:3:Title string Open SideStore" ./Payload/LiveContainer.app/Settings.bundle/Root.plist
           /usr/libexec/PlistBuddy -c "Add :PreferenceSpecifiers:3:Key string LCOpenSideStore" ./Payload/LiveContainer.app/Settings.bundle/Root.plist
           /usr/libexec/PlistBuddy -c "Add :PreferenceSpecifiers:3:DefaultValue bool false" ./Payload/LiveContainer.app/Settings.bundle/Root.plist
-
-          # Use PATCHED SideStore IPA (not the downloaded nightly)
           cd tmp
           unzip ../SideStore-patched.ipa
           cd ..
-
-          # Convert SideStore app to framework
           mv ./tmp/Payload/SideStore.app ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework
           ./dylibify ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/SideStore ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/SideStore.dylib
           rm ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/SideStore
           mv ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/SideStore.dylib ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/SideStore
           ldid -S"" ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/SideStore
           cp ./.github/sidelc/LCAppInfo.plist ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/
-
-          # Copy intents
           cp ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/Intents.intentdefinition ./Payload/LiveContainer.app/
           cp ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/ViewApp.intentdefinition ./Payload/LiveContainer.app/
           cp -r ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/Metadata.appintents ./Payload/LiveContainer.app/Metadata.appintents
           sed -i '' 's/9SideStore20RefreshAllAppsIntentV/16SideStoreSupport20RefreshAllAppsIntentV/g' ./Payload/LiveContainer.app/Metadata.appintents/extract.actionsdata
           sed -i '' 's/9SideStore26RefreshAllAppsWidgetIntentV/16SideStoreSupport26RefreshAllAppsWidgetIntentV/g' ./Payload/LiveContainer.app/Metadata.appintents/extract.actionsdata
-
-          # AltWidgetExtension
           mv ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/PlugIns/AltWidgetExtension.appex ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex
           cp -r ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/Frameworks ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.kdt.livecontainer.LiveWidget" ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable LiveWidgetExtension" ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex/Info.plist
           mv ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex/AltWidgetExtension ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex/LiveWidgetExtension
-
-          # Sign
           rm -r .zsign_cache 2>/dev/null || true
           find Payload -type d -name "_CodeSignature" -exec rm -r {} + 2>/dev/null || true
           ldid -S.github/sidelc/LiveWidgetExtension_adhoc.xml ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex/LiveWidgetExtension
-
-          # Package
           zip -r "$SCHEME+SideStore-patched.ipa" "Payload" -x "._*" -x ".DS_Store" -x "__MACOSX"
           ls -la "$SCHEME+SideStore-patched.ipa"
 
@@ -254,8 +202,3 @@ EOF
         with:
           name: LiveContainer+SideStore-patched.ipa
           path: LiveContainer+SideStore-patched.ipa
-
- 
- 
-
-
