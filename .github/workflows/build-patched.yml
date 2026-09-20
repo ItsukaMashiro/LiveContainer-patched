@@ -46,28 +46,30 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.2'
+          xcode-version: '26.4'
 
       - name: Build SideStore
         run: |
           xcodebuild archive \
-            -scheme "$SCHEME" \
-            -workspace SideStore.xcworkspace \
+            -project AltStore.xcodeproj \
+            -scheme SideStore \
             -sdk iphoneos \
-            -arch arm64 \
             -configuration Release \
-            -archivePath "$ARCHIVE_PATH" \
-            | xcpretty
+            -archivePath ./SideStore \
+            CODE_SIGNING_REQUIRED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM=XYZ0123456 \
+            ORG_IDENTIFIER=com.SideStore
           exit ${PIPESTATUS[0]}
 
       - name: Create SideStore IPA
         run: |
-          # Extract the app from the archive
-          mkdir -p sidestore-ipa/Payload
-          cp -r "$ARCHIVE_PATH.xcarchive/Products/Applications/SideStore.app" sidestore-ipa/Payload/
-          cd sidestore-ipa
-          zip -r ../SideStore-patched.ipa Payload
-          cd ..
+          mkdir -p Payload/SideStore.app
+          cp -R SideStore.xcarchive/Products/Applications/SideStore.app/ Payload/SideStore.app/
+          rm -f SideStore-patched.ipa
+          zip -r SideStore-patched.ipa Payload
+          rm -rf Payload*/
           ls -la SideStore-patched.ipa
 
       - name: Upload SideStore IPA
